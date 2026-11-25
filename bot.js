@@ -2,8 +2,9 @@ const { Client, GatewayIntentBits } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
+const https = require('https');
 
-// Render'ın "Deploy failed" demesini önlemek için basit bir web sunucusu
+// Render web sunucusu
 const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
     res.end('Bot aktif ve calisiyor!\n');
@@ -14,6 +15,16 @@ server.listen(PORT, () => {
     console.log(`Web sunucusu ${PORT} portunda calisiyor.`);
 });
 
+// Kendi kendini uyandırma mekanizması (Her 10 dakikada bir)
+const RENDER_URL = process.env.RENDER_EXTERNAL_URL || 'https://discord-film-botu.onrender.com';
+setInterval(() => {
+    https.get(RENDER_URL, (res) => {
+        console.log(`[Ping] Bot uyanik tutuluyor. Durum kodu: ${res.statusCode}`);
+    }).on('error', (err) => {
+        console.error('[Ping Hatasi]:', err.message);
+    });
+}, 10 * 60 * 1000);
+
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -22,6 +33,7 @@ const client = new Client({
     ],
 });
 
+// GİZLİ BİLGİLER RENDER PANELİNDEN ÇEKİLİYOR (GitHub'da sorun çıkmaz)
 const TOKEN = process.env.TOKEN;
 const FILM_KANAL_ID = process.env.FILM_KANAL_ID;
 
@@ -56,11 +68,11 @@ client.on('messageCreate', async (message) => {
     const args = message.content.slice(1).trim().split(/ +/);
     const command = args.shift().toLowerCase();
 
-    // 1. Film Ekleme Komutu: !ekle Interstellar
+    // 1. Film Ekleme Komutu
     if (command === 'ekle') {
         const filmAdi = args.join(' ').trim();
         if (!filmAdi) {
-            return message.reply('Lütfen eklemek istediğin filmin adını yaz. Örnek: `!ekle Interstellar`');
+            return message.reply('Lütfen eklemek istediğin filmin adını veya linkini yaz. Örnek: `!ekle Interstellar`');
         }
 
         let filmler = dosyaOku(DOSYA_YOLU);
@@ -79,7 +91,7 @@ client.on('messageCreate', async (message) => {
         return message.reply(`✅ **"${filmAdi}"** başarıyla film havuzuna eklendi! (Toplam havuz: ${filmler.length})`);
     }
 
-    // 2. Çark Çevirme Komutu: !çevir veya !cevir
+    // 2. Çark Çevirme Komutu
     if (command === 'çevir' || command === 'cevir') {
         let filmler = dosyaOku(DOSYA_YOLU);
 
@@ -104,7 +116,7 @@ client.on('messageCreate', async (message) => {
         }, 2000);
     }
 
-    // 3. Aktif Listeyi Görme Komutu: !liste
+    // 3. Liste Komutu
     if (command === 'liste') {
         let filmler = dosyaOku(DOSYA_YOLU);
 
@@ -116,19 +128,19 @@ client.on('messageCreate', async (message) => {
         return message.reply(`📋 **Havuzdaki Filmler (${filmler.length}):**\n${listeStr}`);
     }
 
-    // 4. İzlenenleri Görme Komutu: !izlenenler
+    // 4. İzlenenler Komutu
     if (command === 'izlenenler') {
         let izlenenler = dosyaOku(IZLENEN_DOSYA_YOLU);
 
         if (izlenenler.length === 0) {
-            return message.reply('📭 Henüz hiç film izlenmemiş (veya çarktan seçilmemiş).');
+            return message.reply('📭 Henüz hiç film izlenmemiş.');
         }
 
         const listeStr = izlenenler.map((f, i) => `${i + 1}. ${f}`).join('\n');
         return message.reply(`🎞️ **Daha Önce İzlenen Filmler (${izlenenler.length}):**\n${listeStr}`);
     }
 
-    // 5. Film Silme Komutu: !sil veya !sil [Sıra Numarası]
+    // 5. Silme Komutu (!sil veya !sil 1)
     if (command === 'sil') {
         let filmler = dosyaOku(DOSYA_YOLU);
 
@@ -138,13 +150,11 @@ client.on('messageCreate', async (message) => {
 
         const silinecekArg = args.join(' ').trim();
 
-        // Eğer sadece !sil yazıldıysa, listeyi numaralarıyla birlikte dök
         if (!silinecekArg) {
             const listeStr = filmler.map((f, i) => `${i + 1}. ${f}`).join('\n');
-            return message.reply(`⚠️ Hangi filmi silmek istiyorsun?\nSilmek istediğin filmin numarasını yaz. Örnek: ` + '`!sil 1`\n\n' + `📋 **Mevcut Liste:**\n${listeStr}`);
+            return message.reply(`⚠️ Hangi filmi silmek istiyorsun? Listeden numara seçerek yaz. Örnek: ` + '`!sil 1`\n\n' + `📋 **Mevcut Liste:**\n${listeStr}`);
         }
 
-        // Sıra numarasına göre sil
         if (!isNaN(silinecekArg)) {
             const siraNo = parseInt(silinecekArg, 10);
             if (siraNo < 1 || siraNo > filmler.length) {
@@ -155,10 +165,9 @@ client.on('messageCreate', async (message) => {
             return message.reply(`🗑️ **${siraNo}. sıradaki** **"${silinenFilm}"** aktif havuzdan kaldırıldı.`);
         }
 
-        // Metne göre sil
         const index = filmler.findIndex(f => f.toLowerCase() === silinecekArg.toLowerCase());
         if (index === -1) {
-            return message.reply(`❌ "${silinecekArg}" adında bir film bulunamadı. Doğrudan numara yazarak silebilirsin (Örnek: \`!sil 1\`).`);
+            return message.reply(`❌ "${silinecekArg}" adında film bulunamadı. Doğrudan numara yazabilirsin (Örnek: \`!sil 1\`).`);
         }
 
         filmler.splice(index, 1);
