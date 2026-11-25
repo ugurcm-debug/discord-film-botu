@@ -1,6 +1,18 @@
 const { Client, GatewayIntentBits } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
+const http = require('http');
+
+// Render'ın "Deploy failed" demesini önlemek için basit bir web sunucusu
+const server = http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('Bot aktif ve calisiyor!\n');
+});
+
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+    console.log(`Web sunucusu ${PORT} portunda calisiyor.`);
+});
 
 const client = new Client({
     intents: [
@@ -67,7 +79,7 @@ client.on('messageCreate', async (message) => {
         return message.reply(`✅ **"${filmAdi}"** başarıyla film havuzuna eklendi! (Toplam havuz: ${filmler.length})`);
     }
 
-    // 2. Çark Çevirme Komutu: !çevir (Türkçe karakter uyumlu)
+    // 2. Çark Çevirme Komutu: !çevir veya !cevir
     if (command === 'çevir' || command === 'cevir') {
         let filmler = dosyaOku(DOSYA_YOLU);
 
@@ -126,13 +138,13 @@ client.on('messageCreate', async (message) => {
 
         const silinecekArg = args.join(' ').trim();
 
-        // Eğer sadece !sil yazıldıysa, önce listeyi dök ve nasıl sileceğini söyle
+        // Eğer sadece !sil yazıldıysa, listeyi numaralarıyla birlikte dök
         if (!silinecekArg) {
             const listeStr = filmler.map((f, i) => `${i + 1}. ${f}`).join('\n');
             return message.reply(`⚠️ Hangi filmi silmek istiyorsun?\nSilmek istediğin filmin numarasını yaz. Örnek: ` + '`!sil 1`\n\n' + `📋 **Mevcut Liste:**\n${listeStr}`);
         }
 
-        // Sıra numarasına göre silme kontrolü
+        // Sıra numarasına göre sil
         if (!isNaN(silinecekArg)) {
             const siraNo = parseInt(silinecekArg, 10);
             if (siraNo < 1 || siraNo > filmler.length) {
@@ -143,7 +155,7 @@ client.on('messageCreate', async (message) => {
             return message.reply(`🗑️ **${siraNo}. sıradaki** **"${silinenFilm}"** aktif havuzdan kaldırıldı.`);
         }
 
-        // Metin girildiyse ada göre sil (eski destek)
+        // Metne göre sil
         const index = filmler.findIndex(f => f.toLowerCase() === silinecekArg.toLowerCase());
         if (index === -1) {
             return message.reply(`❌ "${silinecekArg}" adında bir film bulunamadı. Doğrudan numara yazarak silebilirsin (Örnek: \`!sil 1\`).`);
